@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build/distribution artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# IDE/editor settings
+.vscode/
+.idea/
+
+# Project runtime outputs
+runs/
+results/
+
+# TensorBoard event files
+events.out.tfevents.*

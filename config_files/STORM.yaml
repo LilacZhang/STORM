@@ -3,7 +3,9 @@ Task: "JointTrainAgent"
 BasicSettings:
   Seed: 0
   ImageSize: 64
-  ReplayBufferOnGPU: True
+  Device: "auto"  # Options: "auto", "mps", "cuda", "cpu"
+  UseAMP: null  # null (auto-detect), true, or false
+  ReplayBufferOnGPU: True  # Deprecated: buffer device now follows Device setting
 
 JointTrainAgent:
   SampleMaxSteps: 102000

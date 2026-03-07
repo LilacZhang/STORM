@@ -10,19 +10,117 @@ import yacs
 from yacs.config import CfgNode as CN
 
 
-def seed_np_torch(seed=20010105):
+class DeviceManager:
+    """
+    Manages device selection and AMP configuration for cross-platform training.
+    Supports automatic detection: MPS > CUDA > CPU
+    """
+
+    def __init__(self, device_config="auto", use_amp=None):
+        """
+        Args:
+            device_config: "auto", "mps", "cuda", "cpu"
+            use_amp: True/False/None (None means auto-detect based on device)
+        """
+        self.device = self._detect_device(device_config)
+        self.use_amp = self._determine_amp(use_amp)
+        self.tensor_dtype = torch.bfloat16 if self.use_amp else torch.float32
+
+    def _detect_device(self, device_config):
+        """Detect and return the appropriate device"""
+        if device_config == "auto":
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                device = torch.device("mps")
+                print(f"🚀 Using MPS device (Apple Silicon GPU)")
+            elif torch.cuda.is_available():
+                device = torch.device("cuda")
+                print(f"🚀 Using CUDA device: {torch.cuda.get_device_name(0)}")
+            else:
+                device = torch.device("cpu")
+                print(f"⚠️  Using CPU device (no GPU available)")
+        elif device_config == "mps":
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                device = torch.device("mps")
+                print(f"🚀 Using MPS device (Apple Silicon GPU)")
+            else:
+                raise RuntimeError("MPS device requested but not available")
+        elif device_config == "cuda":
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+                print(f"🚀 Using CUDA device: {torch.cuda.get_device_name(0)}")
+            else:
+                raise RuntimeError("CUDA device requested but not available")
+        elif device_config == "cpu":
+            device = torch.device("cpu")
+            print(f"Using CPU device")
+        else:
+            raise ValueError(f"Unknown device config: {device_config}")
+
+        return device
+
+    def _determine_amp(self, use_amp):
+        """Determine whether to use automatic mixed precision"""
+        if use_amp is not None:
+            # User explicitly specified
+            if use_amp and self.device.type == "mps":
+                print("⚠️  AMP requested but disabled on MPS (limited support)")
+                return False
+            return use_amp
+        else:
+            # Auto-detect: enable only on CUDA
+            if self.device.type == "cuda":
+                print("✓ AMP enabled (bfloat16)")
+                return True
+            else:
+                print(f"✓ AMP disabled on {self.device.type} (using float32)")
+                return False
+
+    def get_device(self):
+        """Return the torch device object"""
+        return self.device
+
+    def get_amp_dtype(self):
+        """Return the appropriate dtype for AMP"""
+        return self.tensor_dtype
+
+    def create_grad_scaler(self):
+        """Create GradScaler conditionally based on device and AMP setting"""
+        if self.device.type == "cuda" and self.use_amp:
+            return torch.cuda.amp.GradScaler(enabled=True)
+        else:
+            # Return a dummy scaler for compatibility
+            return torch.cuda.amp.GradScaler(enabled=False)
+
+
+def seed_np_torch(seed=20010105, device=None):
+    """
+    Set random seeds for reproducibility across numpy, random, and torch.
+
+    Args:
+        seed: Random seed value
+        device: torch.device object or None (for backward compatibility)
+    """
     random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    # some cudnn methods can be random even after fixing the seed unless you tell it to be deterministic
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+
+    # Conditionally set CUDA seeds
+    if device is None or device.type == "cuda":
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            # some cudnn methods can be random even after fixing the seed unless you tell it to be deterministic
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+    # Set MPS seeds if applicable
+    if device is not None and device.type == "mps":
+        # MPS uses the same manual_seed as CPU
+        torch.manual_seed(seed)
 
 
-class Logger():
+class Logger:
     def __init__(self, path) -> None:
         self.writer = SummaryWriter(logdir=path, flush_secs=1)
         self.tag_step = {}
@@ -42,7 +140,7 @@ class Logger():
             self.writer.add_scalar(tag, value, self.tag_step[tag])
 
 
-class EMAScalar():
+class EMAScalar:
     def __init__(self, decay) -> None:
         self.scalar = 0.0
         self.decay = decay
@@ -66,7 +164,9 @@ def load_config(config_path):
     conf.BasicSettings = CN()
     conf.BasicSettings.Seed = 0
     conf.BasicSettings.ImageSize = 0
-    conf.BasicSettings.ReplayBufferOnGPU = False
+    conf.BasicSettings.Device = "auto"  # "auto", "mps", "cuda", "cpu"
+    conf.BasicSettings.UseAMP = None  # None (auto), True, or False
+    conf.BasicSettings.ReplayBufferOnGPU = False  # Deprecated, use Device instead
 
     # Under this setting, input 128*128 -> latent 16*16*64
     conf.Models = CN()

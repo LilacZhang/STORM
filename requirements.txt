@@ -9,4 +9,7 @@ colorama
 einops
 tqdm
 opencv-python
-gymnasium[atari,accept-rom-license]
+# Environment dependencies
+gymnasium[mujoco]  # MuJoCo environments (continuous control)
+# gymnasium[atari,accept-rom-license]  # Uncomment for Atari support
+mujoco>=3.0.0  # MuJoCo physics engine
