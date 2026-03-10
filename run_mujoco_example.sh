@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Example training script for MuJoCo environments on macOS with MPS support
 # This script demonstrates how to train the STORM model on MuJoCo environments
